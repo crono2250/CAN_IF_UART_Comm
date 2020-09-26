@@ -25,12 +25,9 @@ jobs:
       - run:
           command: |
             .circleci/build_linux.sh
-
-      - run:
-          command: |
             mkdir -p /tmp/build
-            cp /build/*.hex /tmp/build
-            cp /build/*.bin /tmp/build
+            cp build/*.hex /tmp/build
+            cp build/*.bin /tmp/build
 
       - store_artifacts:
           path: |

@@ -24,7 +24,6 @@ jobs:
               
       - run:
           command: |
-            ln -s arm-none-eabi-ld ld
             .circleci/build_linux.sh
 workflows:
   workflows:

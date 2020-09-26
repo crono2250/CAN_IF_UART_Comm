@@ -37,7 +37,7 @@ jobs:
 
       - store_artifacts:
           path: |
-            /tmp/build-1
+            /tmp/build
           destination: |
             artifact-file
 workflows:

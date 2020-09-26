@@ -21,10 +21,11 @@ jobs:
               libalgorithm-merge-perl \
               dpkg-dev \
               binutils-arm-none-eabi
-
+              
       - run:
           command: |
-            gcc-arm-none-eabi-ld --version \
+            ln -s arm-none-eabi-ld ld \
+            arm-none-eabi-ld --version \
             .circleci/build_linux.sh
 workflows:
   workflows:

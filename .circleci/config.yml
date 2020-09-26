@@ -17,7 +17,6 @@ jobs:
             sudo apt update
             sudo apt install \
               gcc-arm-none-eabi \
-              gcc-arm-embedded \
               fakeroot \
               libalgorithm-merge-perl \
               dpkg-dev

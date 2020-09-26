@@ -1,3 +1,5 @@
 #!/bin/bash
 
-    cmake --build .
+    make clean
+    make
+

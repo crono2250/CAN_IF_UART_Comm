@@ -16,8 +16,9 @@ jobs:
           command: |
             sudo apt update
             sudo apt install \
-              cmake \
-              gcc-arm-none-eabi
+              gcc-arm-none-eabi \
+              gcc-arm-embedded \
+              build-essential
       - run:
           command: |
             .circleci/build_linux.sh

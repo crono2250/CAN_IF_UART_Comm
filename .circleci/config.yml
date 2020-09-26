@@ -28,10 +28,10 @@ jobs:
             
       - run:
           command: |
-            ls
+            ls ./build/
             mkdir -p /tmp/build
-            cp build/*.hex /tmp/build
-            cp build/*.bin /tmp/build
+            cp ./build/*.hex /tmp/build
+            cp ./build/*.bin /tmp/build
 
       - store_artifacts:
           path: |

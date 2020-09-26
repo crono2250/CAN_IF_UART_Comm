@@ -1,0 +1,27 @@
+version: 2.1
+
+defaults: &defaults
+  working_directory: ~/project
+  docker:
+    - image: circleci/buildpack-deps:stretch
+      environment:
+        TZ: /usr/share/zoneinfo/Asia/Tokyo
+
+jobs:
+  build:
+    <<: *defaults
+    steps:
+      - checkout
+      - run:
+          command: |
+            sudo apt update
+            sudo apt install \
+              cmake \
+              gcc-arm-none-eabi
+      - run:
+          command: |
+            .circleci/build_linux.sh
+workflows:
+  workflows:
+    jobs:
+      - build

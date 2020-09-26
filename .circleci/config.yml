@@ -32,10 +32,14 @@ jobs:
             mkdir -p /tmp/build
             cp ./build/*.hex /tmp/build
             cp ./build/*.bin /tmp/build
+            cp ./build/*.map /tmp/build
+            cp ./build/*.elf /tmp/build
 
       - store_artifacts:
           path: |
-            /tmp/build
+            /tmp/build-1
+          destination: |
+            artifact-file
 workflows:
   workflows:
     jobs:

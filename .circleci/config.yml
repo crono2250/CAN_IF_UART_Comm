@@ -36,10 +36,8 @@ jobs:
             ls /tmp/build
 
       - store_artifacts:
-          path: |
-            /tmp/build
-          destination: |
-            artifact-file
+          path: /tmp/build/*
+
 workflows:
   workflows:
     jobs:

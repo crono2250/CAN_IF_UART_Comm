@@ -19,11 +19,12 @@ jobs:
               gcc-arm-none-eabi \
               fakeroot \
               libalgorithm-merge-perl \
-              dpkg-dev
+              dpkg-dev \
+              binutils-arm-none-eabi
 
       - run:
           command: |
-            make
+            .circleci/build_linux.sh
 workflows:
   workflows:
     jobs:

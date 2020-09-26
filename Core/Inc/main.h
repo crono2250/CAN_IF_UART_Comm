@@ -54,6 +54,7 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
+void USART1_EventHandler(void);
 void UART_Rx_Decode(uint8_t *buf, uint16_t len);
 void UART_Rx_Parse(uint8_t *buf, uint16_t len);
 void UART_Transmit(uint8_t chara);
@@ -62,6 +63,10 @@ uint8_t check_sum(uint8_t *buf, uint16_t len);
 void print_hex(const uint8_t * src_ptr, size_t src_len);
 void UART_Tx_bin(const uint8_t * src_ptr, size_t src_len);
 void UART_Tx_w_encode(const uint8_t * src_ptr, size_t src_len, uint8_t SRC_ADDR, uint8_t DEST_ADDR, uint8_t COMMAND);
+
+HAL_StatusTypeDef HAL_UART_DMA_Tx_Stop(UART_HandleTypeDef *huart);
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart);
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

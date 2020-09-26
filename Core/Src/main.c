@@ -1,4 +1,8 @@
 /* USER CODE BEGIN Header */
+//#define   _ECHOBACK
+#define	_DEBUGPRINT_SUM
+#define	_DEBUGPRINT_COB_ENC
+#define	_DEBUGPRINT_COB_DEC
 /**
   ******************************************************************************
   * @file           : main.c
@@ -21,6 +25,7 @@
 #include "main.h"
 #include "dma.h"
 #include "tim.h"
+#include "i2c.h"
 #include "usart.h"
 #include "gpio.h"
 
@@ -57,6 +62,13 @@ uint8_t	RxData = 0;
 uint16_t SCI_BYTES_READ = 0x0;
 uint8_t SCI_TX_DAT[TxBuff_Density] = {0x0};
 uint8_t SCI_RX_DAT[RxBuff_Density] = {0x0};
+
+uint8_t USART1_RX_BUF[RxBuff_Density] = {0x0};
+#define DMA_WRITE_PTR ( (RxBuff_Density - huart1.hdmarx->Instance->CNDTR) % (RxBuff_Density) )
+
+uint8_t buffer[2];
+
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -79,41 +91,66 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+void USART1_EventHandler(void)
+{
+    uint8_t rxlen = 0;
+    uint8_t i;
+
+   	if((__HAL_UART_GET_FLAG(&huart1, UART_FLAG_IDLE) != RESET) && (__HAL_UART_GET_IT_SOURCE(&huart1, UART_IT_IDLE) != RESET))
+    {
+        __HAL_UART_CLEAR_IDLEFLAG(&huart1);
+        HAL_UART_DMAStop(&huart1);
+
+        rxlen = DMA_WRITE_PTR;  // 受信データ長
+
+        xprintf("UART1_RxLength = %d\n", rxlen);
+        xputs("DAT = ");
+        for (i = 0; i < rxlen; i++)
+        {
+        	SCI_RX_DAT[i] = USART1_RX_BUF[i];
+        	xprintf("%02X ",SCI_RX_DAT[i]);
+        }
+        xputs("\n");
+
+        HAL_UART_Receive_DMA(&huart1, USART1_RX_BUF, RxBuff_Density);  // DMA受信再スタート
+    }
+}
+
 //----------------------------------------------------------------
 // UART Rx (w/Interrupt)
 //----------------------------------------------------------------
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)
-{
-	uint8_t d = 0x0;
-  uint8_t Byte_Count = 0;
-
-  if(UartHandle->Instance == USART1)
-  {
-	 	d = RxData;
-
-	 	SCI_RX_DAT[SCI_BYTES_READ] = d;
-	 	SCI_BYTES_READ++;
-	 #ifdef  _ECHOBACK
-	 		  xprintf("%c", d);  // echo back
-	 #endif
-
-	   if(d == 0x00)  //  データ末尾
-	   {
-	 	Byte_Count = SCI_BYTES_READ;  //  バッファにコピーして
-	 	SCI_BYTES_READ = 0;           //  受信カウントクリア
-	 	UART_Rx_Decode(&SCI_RX_DAT, Byte_Count);
-	   }
-
-	   HAL_UART_Receive_IT(&huart1, &RxData, 1);
-}
-
-  if(UartHandle->Instance == USART2)
-  {
-	  //Not use
-  }
-
-  return;
-}
+//void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)
+//{
+//	uint8_t d = 0x0;
+//  uint8_t Byte_Count = 0;
+//
+//  if(UartHandle->Instance == USART1)
+//  {
+//	 	d = RxData;
+//
+//	 	SCI_RX_DAT[SCI_BYTES_READ] = d;
+//	 	SCI_BYTES_READ++;
+//	 #ifdef  _ECHOBACK
+//	 		  xprintf("%c", d);  // echo back
+//	 #endif
+//
+//	   if(d == 0x00)  //  データ末尾
+//	   {
+//	 	Byte_Count = SCI_BYTES_READ;  //  バッファにコピーして
+//	 	SCI_BYTES_READ = 0;           //  受信カウントクリア
+//	 	UART_Rx_Decode(&SCI_RX_DAT, Byte_Count);
+//	   }
+//
+//	   HAL_UART_Receive_IT(&huart1, &RxData, 1);
+//}
+//
+//  if(UartHandle->Instance == USART2)
+//  {
+//	  //Not use
+//  }
+//
+//  return;
+//}
 
 void UART_Rx_Decode(uint8_t *buf, uint16_t len)
 {
@@ -383,6 +420,44 @@ void UART_Tx_w_encode(const uint8_t * src_ptr, size_t src_len, uint8_t SRC_ADDR,
 
 //---------------------------------------------------------------------------------------------------
 
+HAL_StatusTypeDef HAL_UART_DMA_Tx_Stop(UART_HandleTypeDef *huart)
+{
+  uint32_t dmarequest = 0x00U;
+  dmarequest = HAL_IS_BIT_SET(huart->Instance->CR3, USART_CR3_DMAT);
+  if((huart->gState == HAL_UART_STATE_BUSY_TX) && dmarequest)
+  {
+    CLEAR_BIT(huart->Instance->CR3, USART_CR3_DMAT);
+
+    /* Abort the UART DMA Tx channel */
+    if(huart->hdmatx != NULL)
+    {
+      HAL_DMA_Abort(huart->hdmatx);
+    }
+    //UART_EndTxTransfer(huart);
+		  /* Disable TXEIE and TCIE interrupts */
+		CLEAR_BIT(huart->Instance->CR1, (USART_CR1_TXEIE | USART_CR1_TCIE));
+		huart->gState = HAL_UART_STATE_READY;
+
+		return HAL_OK;
+  }
+	else return HAL_ERROR;
+
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+	LED_ON();
+//	HAL_GPIO_TogglePin(LD3_GPIO_Port,LD3_Pin);
+
+//	HAL_UART_DMA_Tx_Stop(&huart1);
+}
+
+//void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+//{
+////	HAL_GPIO_TogglePin(LD4_GPIO_Port,LD4_Pin);
+//	LED_ON();
+//}
+
 /* USER CODE END 0 */
 
 /**
@@ -424,6 +499,10 @@ int main(void)
 	__HAL_TIM_CLEAR_FLAG(&htim3, TIM_FLAG_UPDATE);
 	HAL_TIM_OC_Start_IT(&htim3, TIM_CHANNEL_1);
 
+	__HAL_UART_DISABLE_IT(&huart1, UART_IT_PE);
+	__HAL_UART_DISABLE_IT(&huart1, UART_IT_ERR);
+	__HAL_UART_ENABLE_IT(&huart1, UART_IT_IDLE);
+	HAL_UART_Receive_DMA(&huart1, USART1_RX_BUF, RxBuff_Density);
 //	HAL_UART_Receive_IT(&huart1, &RxData, 1);
 
 	xfunc_out = UART_Transmit_DebugOut;	//uart2, 115.2kbps
@@ -433,8 +512,6 @@ int main(void)
 
 	uint8_t UART_Tx_Buf[32] = {0x55, 0xAA, 0xFF, 0x12, 0x34, 0xDE, 0xAD, 0xBE, 0xEF};
 
-	UART_Tx_w_encode(UART_Tx_Buf, 9, 0x01, 0x10, CMD_NOP);  // buf, buf_length(count from 1), Src_Addr, Dest_Addr, Command
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -442,9 +519,10 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-
+	HAL_Delay(2000);
     /* USER CODE BEGIN 3 */
-	LED_ON();
+	UART_Tx_w_encode(UART_Tx_Buf, 9, 0x01, 0x10, CMD_NOP);  // buf, buf_length(count from 1), Src_Addr, Dest_Addr, Command
+	//	LED_ON();
   }
   /* USER CODE END 3 */
 }

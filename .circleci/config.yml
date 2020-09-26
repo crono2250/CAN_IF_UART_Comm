@@ -20,6 +20,8 @@ jobs:
               fakeroot \
               libalgorithm-merge-perl \
               dpkg-dev
+            sudo apt-get install \
+              build-essential
 
       - run:
           command: |

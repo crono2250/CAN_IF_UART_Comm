@@ -20,6 +20,8 @@ jobs:
               gcc-arm-none-eabi
       - run:
           command: |
+            SCRIPTS="/home/ubuntu/${CIRCLE_PROJECT_REPONAME}/scripts"
+            find "${SCRIPTS}" | grep "\.sh$" | xargs chmod +x
             .circleci/build_linux.sh
 workflows:
   workflows:

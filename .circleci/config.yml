@@ -28,15 +28,16 @@ jobs:
             
       - run:
           command: |
-            mkdir -p /tmp/build
-            cp ./build/*.hex /tmp/build
-            cp ./build/*.bin /tmp/build
-            cp ./build/*.map /tmp/build
-            cp ./build/*.elf /tmp/build
-            ls /tmp/build
+            mkdir -p /tmp/artifacts
+            cp ./build/*.hex /tmp/artifacts
+            cp ./build/*.bin /tmp/artifacts
+            cp ./build/*.map /tmp/artifacts
+            cp ./build/*.elf /tmp/artifacts
+            ls /tmp/artifacts
 
       - store_artifacts:
-          path: /tmp/build/*
+          path: /tmp/artifacts
+          destination: artifacts
 
 workflows:
   workflows:

@@ -93,15 +93,19 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+//----------------------------------------------------------------
+// UART Rx (w/DMA, for data) 921.6kbps
+//----------------------------------------------------------------
 void USART1_EventHandler(void)
 {
     uint8_t rxlen = 0;
     uint8_t i;
 
+    // idle状態検出
    	if((__HAL_UART_GET_FLAG(&huart1, UART_FLAG_IDLE) != RESET) && (__HAL_UART_GET_IT_SOURCE(&huart1, UART_IT_IDLE) != RESET))
     {
         __HAL_UART_CLEAR_IDLEFLAG(&huart1);
-        HAL_UART_DMAStop(&huart1);
+        HAL_UART_DMAStop(&huart1);      // DMA受信停止
 
         rxlen = DMA_WRITE_PTR;  // 受信データ長
 #ifdef _DEBUFPRINT_UART1_RX
@@ -115,55 +119,21 @@ void USART1_EventHandler(void)
         	xprintf("%02X ",SCI_RX_DAT[i]);
 #endif
 
-		   if(SCI_RX_DAT[i] == 0x00)  //  データ末尾
-		   {
-			   UART_Rx_Decode(&SCI_RX_DAT, i);
-		   }
+          if(SCI_RX_DAT[i] == 0x00)  //  データ末尾
+          {
+            UART_Rx_Decode(&SCI_RX_DAT, i);
+          }
         }
 #ifdef _DEBUFPRINT_UART1_RX
         xputs("\n");
 #endif
         HAL_UART_Receive_DMA(&huart1, USART1_RX_BUF, RxBuff_Density);  // DMA受信再スタート
-
     }
 }
 
 //----------------------------------------------------------------
-// UART Rx (w/Interrupt)
+// Convert cobsr to plain
 //----------------------------------------------------------------
-//void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)
-//{
-//	uint8_t d = 0x0;
-//  uint8_t Byte_Count = 0;
-//
-//  if(UartHandle->Instance == USART1)
-//  {
-//	 	d = RxData;
-//
-//	 	SCI_RX_DAT[SCI_BYTES_READ] = d;
-//	 	SCI_BYTES_READ++;
-//	 #ifdef  _ECHOBACK
-//	 		  xprintf("%c", d);  // echo back
-//	 #endif
-//
-//	   if(d == 0x00)  //  データ末尾
-//	   {
-//	 	Byte_Count = SCI_BYTES_READ;  //  バッファにコピーして
-//	 	SCI_BYTES_READ = 0;           //  受信カウントクリア
-//	 	UART_Rx_Decode(&SCI_RX_DAT, Byte_Count);
-//	   }
-//
-//	   HAL_UART_Receive_IT(&huart1, &RxData, 1);
-//}
-//
-//  if(UartHandle->Instance == USART2)
-//  {
-//	  //Not use
-//  }
-//
-//  return;
-//}
-
 void UART_Rx_Decode(uint8_t *buf, uint16_t len)
 {
     cobsr_decode_result   result_rx;
@@ -209,21 +179,23 @@ void UART_Rx_Decode(uint8_t *buf, uint16_t len)
     	xputs("Decoded data : \n");
         print_hex(in_buffer, in_buffer[0]);
         xprintf("\nLength %u, Status %02X\n", result_rx.out_len + 1, result_rx.status);
-      return;   // sum合わず失敗した
+      return;   // Checksums don't match, abort.
     }
 
 #ifdef  _DEBUGPRINT_COB_DEC
     uint8_t data_length = in_buffer[0]-(TxHeader_Length+1);
     xprintf("Src_Addr : 0x%02X, Dest_Addr : 0x%02X, Command : 0x%02X, Data_Length : %d\n", in_buffer[1], in_buffer[2], in_buffer[3], data_length);
     xputs("Payload : \n");
-    print_hex(&in_buffer[4], data_length);
+    print_hex(&in_buffer[TxHeader_Length], data_length);
     xputs("\n");
 #endif
 
     UART_Rx_Parse(&in_buffer, in_buffer[0]);
 }
 
-// ここに来ている時点でsumチェックは通っている前提。
+//----------------------------------------------------------------
+// parsing Rx Data
+//----------------------------------------------------------------
 void UART_Rx_Parse(uint8_t *buf, uint16_t len)
 {
   uint8_t SRC_ADDR = buf[1];
@@ -237,7 +209,7 @@ void UART_Rx_Parse(uint8_t *buf, uint16_t len)
   memset(PAYLOAD, 0x00, sizeof(PAYLOAD));
 
 	// パケ?��?トフィルタ
-	if(OWN_ADDRESS == SRC_ADDR)	// 自分自身が送ったパケットだった
+	if(OWN_ADDRESS == SRC_ADDR)	// Loopback detect
 	{
 #ifdef _DEBUGPRINT_RX_PARSE
 	  xputs("own Packet!\n");
@@ -245,9 +217,9 @@ void UART_Rx_Parse(uint8_t *buf, uint16_t len)
 	  return;
 	}
 
-	if(OWN_ADDRESS != DEST_ADDR)	// 自分に関係ないパケットだった。
+	if(OWN_ADDRESS != DEST_ADDR)	// Packets not related to the own station
 	{
-		if(DEST_ADDR == 0x0)	//同報パケットは通す
+		if(DEST_ADDR == 0x0)	//Broadcast packets are receive
 		{
 #ifdef _DEBUGPRINT_RX_PARSE
 			xputs("Broadcast Packet!\n");
@@ -263,13 +235,13 @@ void UART_Rx_Parse(uint8_t *buf, uint16_t len)
 
 	for(i = 0; i < (buf[0]-(TxHeader_Length+1)); i++)
 	{
-		PAYLOAD[i] = buf[4+i];
+		PAYLOAD[i] = buf[TxHeader_Length + i];
 	}
 
 #ifdef _DEBUGPRINT_RX_PARSE
 	xprintf("COMMAND = %02X\n", COMMAND);
 #endif
-	switch(COMMAND)		// コマンドはここに書いていく。
+	switch(COMMAND)
 	{
 		case CMD_NOP:
 #ifdef _DEBUGPRINT_RX_PARSE
@@ -295,7 +267,6 @@ void UART_Rx_Parse(uint8_t *buf, uint16_t len)
 //----------------------------------------------------------------
 void UART_Transmit(uint8_t chara)
 {
-//	HAL_UART_Transmit_IT(&huart1, &chara, 1);
 //	HAL_UART_Transmit_DMA(&huart1, (uint8_t*)&chara, 1);
 	HAL_UART_Transmit(&huart1, (uint8_t*)&chara, 1, 100);
 	return;
@@ -306,7 +277,6 @@ void UART_Transmit(uint8_t chara)
 //----------------------------------------------------------------
 void UART_Transmit_DebugOut(uint8_t chara)
 {
-//	HAL_UART_Transmit_DMA(&huart2, (uint8_t*)&chara, 1);
 	HAL_UART_Transmit(&huart2, (uint8_t*)&chara, 1, 100);
 	return;
 }
@@ -355,7 +325,7 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 }
 
 //---------------------------------------------------------------------------------------------------
-// 任意長ダンプ
+// Dump any length
 //---------------------------------------------------------------------------------------------------
 void print_hex(const uint8_t * src_ptr, size_t src_len)
 {
@@ -369,11 +339,11 @@ void print_hex(const uint8_t * src_ptr, size_t src_len)
 }
 
 //---------------------------------------------------------------------------------------------------
-// 任意長でバッファ内のデータをそのまま送信
+// send uart1 any length
 //---------------------------------------------------------------------------------------------------
 void UART_Tx_bin(const uint8_t * src_ptr, size_t src_len)
 {
-    size_t              i;
+    size_t	i;
 
     for (i = 0; i < src_len; i++)
     {
@@ -382,7 +352,7 @@ void UART_Tx_bin(const uint8_t * src_ptr, size_t src_len)
 }
 
 //---------------------------------------------------------------------------------------------------
-// データをパケットに加工・送信
+// Convert data to packets and send (UART1)
 //---------------------------------------------------------------------------------------------------
 void UART_Tx_w_encode(const uint8_t * src_ptr, size_t src_len, uint8_t SRC_ADDR, uint8_t DEST_ADDR, uint8_t COMMAND)
 {
@@ -426,88 +396,9 @@ void UART_Tx_w_encode(const uint8_t * src_ptr, size_t src_len, uint8_t SRC_ADDR,
     }
 
 	UART_Tx_bin(out_buffer, result.out_len + 1);	// Send to UART
-
-//-------
-//### Receive
-
-
-//     uint8_t	Receive_Length = 0;
-//     for(i = 0; out_buffer[i] != 0; i++)
-//     {
-//     	Receive_Length++;
-//     }
-//     Receive_Length = Receive_Length - 1;
-// #ifdef  _DEBUGPRINT_COB_DEC
-//     xprintf("Length = %d\n", Receive_Length);
-// #endif
-//     result_rx = cobsr_decode(in_buffer, sizeof(in_buffer), out_buffer, Receive_Length);
-// #ifdef  _DEBUGPRINT_COB_DEC
-//     xputs("Decoded data : \n");
-//     print_hex(in_buffer, Receive_Length);
-//     xprintf("\nLength %u, Status %02X\n", result_rx.out_len, result_rx.status);
-// #endif
-//     if(in_buffer[Receive_Length - 1] != check_sum(&in_buffer, Receive_Length - 1))
-//     {
-//     	xputs("Sum is incorrect\n");
-//     	xputs("\n");
-//     	xprintf("SUM Calc : %02X, Received : %02X\n", check_sum(&in_buffer, Receive_Length - 1), in_buffer[Receive_Length - 1]);
-
-//         xputs("Received data : \n");
-//         print_hex(out_buffer, Receive_Length + 2);
-//         xprintf("\nLength %u\n", Receive_Length + 2);
-
-//     	xputs("Decoded data : \n");
-//         print_hex(in_buffer, Receive_Length);
-//         xprintf("\nLength %u, Status %02X\n", result_rx.out_len + 1, result_rx.status);
-
-//     }
-
-//         xprintf("Src_Addr : 0x%02X, Dest_Addr : 0x%02X, Command : 0x%02X, Data_Length : %d\n", in_buffer[1], in_buffer[2], in_buffer[3], in_buffer[0]-(TxHeader_Length+1));
-//         xputs("Payload : \n");
-//         print_hex(&in_buffer[4], in_buffer[0]-(TxHeader_Length+1));
-//         xputs("\n");
-
 }
 
 //---------------------------------------------------------------------------------------------------
-
-HAL_StatusTypeDef HAL_UART_DMA_Tx_Stop(UART_HandleTypeDef *huart)
-{
-  uint32_t dmarequest = 0x00U;
-  dmarequest = HAL_IS_BIT_SET(huart->Instance->CR3, USART_CR3_DMAT);
-  if((huart->gState == HAL_UART_STATE_BUSY_TX) && dmarequest)
-  {
-    CLEAR_BIT(huart->Instance->CR3, USART_CR3_DMAT);
-
-    /* Abort the UART DMA Tx channel */
-    if(huart->hdmatx != NULL)
-    {
-      HAL_DMA_Abort(huart->hdmatx);
-    }
-    //UART_EndTxTransfer(huart);
-		  /* Disable TXEIE and TCIE interrupts */
-		CLEAR_BIT(huart->Instance->CR1, (USART_CR1_TXEIE | USART_CR1_TCIE));
-		huart->gState = HAL_UART_STATE_READY;
-
-		return HAL_OK;
-  }
-	else return HAL_ERROR;
-
-}
-
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
-{
-	LED_ON();
-//	HAL_GPIO_TogglePin(LD3_GPIO_Port,LD3_Pin);
-
-//	HAL_UART_DMA_Tx_Stop(&huart1);
-}
-
-//void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-//{
-////	HAL_GPIO_TogglePin(LD4_GPIO_Port,LD4_Pin);
-//	LED_ON();
-//}
 
 /* USER CODE END 0 */
 
@@ -546,7 +437,6 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
 	HAL_TIM_Base_Start_IT(&htim3);
-
 	__HAL_TIM_CLEAR_FLAG(&htim3, TIM_FLAG_UPDATE);
 	HAL_TIM_OC_Start_IT(&htim3, TIM_CHANNEL_1);
 
@@ -554,12 +444,8 @@ int main(void)
 	__HAL_UART_DISABLE_IT(&huart1, UART_IT_ERR);
 	__HAL_UART_ENABLE_IT(&huart1, UART_IT_IDLE);
 	HAL_UART_Receive_DMA(&huart1, USART1_RX_BUF, RxBuff_Density);
-//	HAL_UART_Receive_IT(&huart1, &RxData, 1);
 
 	xfunc_out = UART_Transmit_DebugOut;	//uart2, 115.2kbps
-
-	//xputs("test test!! unko unko!!!\n");
-	//  HAL_Delay(1);
 
 	uint8_t UART_Tx_Buf[32] = {0x55, 0xAA, 0xFF, 0x12, 0x34, 0xDE, 0xAD, 0xBE, 0xEF};
 

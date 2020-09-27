@@ -1,8 +1,10 @@
 /* USER CODE BEGIN Header */
 //#define   _ECHOBACK
-#define	_DEBUGPRINT_SUM
-#define	_DEBUGPRINT_COB_ENC
-#define	_DEBUGPRINT_COB_DEC
+//#define	_DEBUGPRINT_SUM
+//#define _DEBUFPRINT_UART1_RX
+//#define	_DEBUGPRINT_COB_ENC
+//#define	_DEBUGPRINT_COB_DEC
+//#define	_DEBUGPRINT_RX_PARSE
 /**
   ******************************************************************************
   * @file           : main.c
@@ -102,17 +104,27 @@ void USART1_EventHandler(void)
         HAL_UART_DMAStop(&huart1);
 
         rxlen = DMA_WRITE_PTR;  // 受信データ長
-
+#ifdef _DEBUFPRINT_UART1_RX
         xprintf("UART1_RxLength = %d\n", rxlen);
         xputs("DAT = ");
+#endif
         for (i = 0; i < rxlen; i++)
         {
         	SCI_RX_DAT[i] = USART1_RX_BUF[i];
+#ifdef _DEBUFPRINT_UART1_RX
         	xprintf("%02X ",SCI_RX_DAT[i]);
-        }
-        xputs("\n");
+#endif
 
+		   if(SCI_RX_DAT[i] == 0x00)  //  データ末尾
+		   {
+			   UART_Rx_Decode(&SCI_RX_DAT, i);
+		   }
+        }
+#ifdef _DEBUFPRINT_UART1_RX
+        xputs("\n");
+#endif
         HAL_UART_Receive_DMA(&huart1, USART1_RX_BUF, RxBuff_Density);  // DMA受信再スタート
+
     }
 }
 
@@ -176,17 +188,19 @@ void UART_Rx_Decode(uint8_t *buf, uint16_t len)
     result_rx = cobsr_decode(in_buffer, sizeof(in_buffer), out_buffer, Receive_Length);
 #ifdef  _DEBUGPRINT_COB_DEC
     xputs("Decoded data : \n");
-    print_hex(in_buffer, Receive_Length);
+    print_hex(in_buffer, Receive_Length -1);
     xprintf("\nLength %u, Status %02X\n", result_rx.out_len, result_rx.status);
 #endif
     uint8_t sum = in_buffer[in_buffer[0] -1];
+#ifdef  _DEBUGPRINT_COB_DEC
     xprintf("\nSUM from packet : %02X\n",sum);
+#endif
 //    if(in_buffer[Receive_Length - 1] != check_sum(&in_buffer, Receive_Length - 1))
-    if(sum != check_sum(&in_buffer, in_buffer[0]) )
+    if(sum != check_sum(&in_buffer, in_buffer[0] -1) )
     {
-    	xputs("Sum is incorrect\n");
+    	xputs("###Rx_Decode : Sum is incorrect\n");
     	xputs("\n");
-    	xprintf("SUM Calc : %02X, Received : %02X\n", check_sum(&in_buffer, in_buffer[0]), sum);
+    	xprintf("SUM Calc : %02X, Received : %02X\n", check_sum(&in_buffer, in_buffer[0] -1), sum);
 
         xputs("Received data : \n");
         print_hex(out_buffer, Receive_Length + 2);
@@ -198,15 +212,18 @@ void UART_Rx_Decode(uint8_t *buf, uint16_t len)
       return;   // sum合わず失敗した
     }
 
+#ifdef  _DEBUGPRINT_COB_DEC
     uint8_t data_length = in_buffer[0]-(TxHeader_Length+1);
     xprintf("Src_Addr : 0x%02X, Dest_Addr : 0x%02X, Command : 0x%02X, Data_Length : %d\n", in_buffer[1], in_buffer[2], in_buffer[3], data_length);
     xputs("Payload : \n");
     print_hex(&in_buffer[4], data_length);
     xputs("\n");
+#endif
 
     UART_Rx_Parse(&in_buffer, in_buffer[0]);
 }
 
+// ここに来ている時点でsumチェックは通っている前提。
 void UART_Rx_Parse(uint8_t *buf, uint16_t len)
 {
   uint8_t SRC_ADDR = buf[1];
@@ -217,26 +234,60 @@ void UART_Rx_Parse(uint8_t *buf, uint16_t len)
   uint8_t PAYLOAD[256];
   uint8_t PAYLOAD_LENGTH = buf[0]-(TxHeader_Length+1);
 
-  // パケ?��?トフィルタ
-  if(OWN_ADDRESS == SRC_ADDR)   return;   // 自分自身が送ったパケットだった
-  if(OWN_ADDRESS != DEST_ADDR || DEST_ADDR != 0x0)  return;   // 自分に関係ないパケットだった。 ただし同報パケットは通す
+  memset(PAYLOAD, 0x00, sizeof(PAYLOAD));
 
-    for(i = 0; i < (buf[0]-(TxHeader_Length+1)); i++)
-    {
-    	PAYLOAD[i] = buf[4+i];
-    }
+	// パケ?��?トフィルタ
+	if(OWN_ADDRESS == SRC_ADDR)	// 自分自身が送ったパケットだった
+	{
+#ifdef _DEBUGPRINT_RX_PARSE
+	  xputs("own Packet!\n");
+#endif
+	  return;
+	}
 
-  switch(COMMAND)
-  {
-    case CMD_NOP:
-        xputs("Payload : \n");
-        print_hex(&PAYLOAD, PAYLOAD_LENGTH);
-        xputs("\n");
-        break;
+	if(OWN_ADDRESS != DEST_ADDR)	// 自分に関係ないパケットだった。
+	{
+		if(DEST_ADDR == 0x0)	//同報パケットは通す
+		{
+#ifdef _DEBUGPRINT_RX_PARSE
+			xputs("Broadcast Packet!\n");
+#endif
+		} else
+		{
+#ifdef _DEBUGPRINT_RX_PARSE
+			xputs("wasted Packet!\n");
+#endif
+			  return;
+		}
+	}
 
-    default:
-        break;
-  }
+	for(i = 0; i < (buf[0]-(TxHeader_Length+1)); i++)
+	{
+		PAYLOAD[i] = buf[4+i];
+	}
+
+#ifdef _DEBUGPRINT_RX_PARSE
+	xprintf("COMMAND = %02X\n", COMMAND);
+#endif
+	switch(COMMAND)		// コマンドはここに書いていく。
+	{
+		case CMD_NOP:
+#ifdef _DEBUGPRINT_RX_PARSE
+			xputs("### CMD_NOP ###\n");
+			xputs("Payload : \n");
+			print_hex(&PAYLOAD, PAYLOAD_LENGTH);
+			xputs("\n");
+#endif
+			break;
+
+		default:
+			xputs("###Parse : Wrong Command \n");
+			xprintf("Src_Addr : 0x%02X, Dest_Addr : 0x%02X, Command : 0x%02X\n", SRC_ADDR, DEST_ADDR, COMMAND);
+			xputs("Payload : \n");
+			print_hex(&PAYLOAD, PAYLOAD_LENGTH);
+			xputs("\n");
+			break;
+	}
 }
 
 //----------------------------------------------------------------
@@ -519,10 +570,54 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	HAL_Delay(2000);
     /* USER CODE BEGIN 3 */
-	UART_Tx_w_encode(UART_Tx_Buf, 9, 0x01, 0x10, CMD_NOP);  // buf, buf_length(count from 1), Src_Addr, Dest_Addr, Command
-	//	LED_ON();
+
+	UART_Tx_Buf[0] = rand() % 0xFF + 1;
+	UART_Tx_Buf[1] = rand() % 0xFF + 1;
+	UART_Tx_Buf[2] = rand() % 0xFF + 1;
+	UART_Tx_Buf[3] = rand() % 0xFF + 1;
+	UART_Tx_Buf[4] = rand() % 0xFF + 1;
+	UART_Tx_Buf[5] = rand() % 0xFF + 1;
+	UART_Tx_Buf[6] = rand() % 0xFF + 1;
+	UART_Tx_Buf[7] = rand() % 0xFF + 1;
+
+//    HAL_Delay(1);	// 自分自身からのパケット
+	UART_Tx_w_encode(UART_Tx_Buf, 9, OWN_ADDRESS, 0x10, CMD_NOP);  // buf, buf_length(count from 1), Src_Addr, Dest_Addr, Command
+
+	UART_Tx_Buf[0] = rand() % 0xFF + 1;
+	UART_Tx_Buf[1] = rand() % 0xFF + 1;
+	UART_Tx_Buf[2] = rand() % 0xFF + 1;
+	UART_Tx_Buf[3] = rand() % 0xFF + 1;
+	UART_Tx_Buf[4] = rand() % 0xFF + 1;
+	UART_Tx_Buf[5] = rand() % 0xFF + 1;
+	UART_Tx_Buf[6] = rand() % 0xFF + 1;
+	UART_Tx_Buf[7] = rand() % 0xFF + 1;
+//	HAL_Delay(1);	// 他局からのパケット(他局宛)
+	UART_Tx_w_encode(UART_Tx_Buf, 9, 0x02, 0x10, CMD_NOP);  // buf, buf_length(count from 1), Src_Addr, Dest_Addr, Command
+
+	UART_Tx_Buf[0] = rand() % 0xFF + 1;
+	UART_Tx_Buf[1] = rand() % 0xFF + 1;
+	UART_Tx_Buf[2] = rand() % 0xFF + 1;
+	UART_Tx_Buf[3] = rand() % 0xFF + 1;
+	UART_Tx_Buf[4] = rand() % 0xFF + 1;
+	UART_Tx_Buf[5] = rand() % 0xFF + 1;
+	UART_Tx_Buf[6] = rand() % 0xFF + 1;
+	UART_Tx_Buf[7] = rand() % 0xFF + 1;
+//	HAL_Delay(1);	// 他局からのパケット(自局宛)
+	UART_Tx_w_encode(UART_Tx_Buf, 9, 0x02, OWN_ADDRESS, CMD_NOP);  // buf, buf_length(count from 1), Src_Addr, Dest_Addr, Command
+
+	UART_Tx_Buf[0] = rand() % 0xFF + 1;
+	UART_Tx_Buf[1] = rand() % 0xFF + 1;
+	UART_Tx_Buf[2] = rand() % 0xFF + 1;
+	UART_Tx_Buf[3] = rand() % 0xFF + 1;
+	UART_Tx_Buf[4] = rand() % 0xFF + 1;
+	UART_Tx_Buf[5] = rand() % 0xFF + 1;
+	UART_Tx_Buf[6] = rand() % 0xFF + 1;
+	UART_Tx_Buf[7] = rand() % 0xFF + 1;
+//	HAL_Delay(1);	// グローバルパケット
+	UART_Tx_w_encode(UART_Tx_Buf, 9, 0x02, 0x00, CMD_NOP);  // buf, buf_length(count from 1), Src_Addr, Dest_Addr, Command
+
+		LED_ON();
   }
   /* USER CODE END 3 */
 }

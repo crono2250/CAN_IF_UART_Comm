@@ -48,28 +48,30 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define	LED_ON()		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_SET)
-#define	LED_OFF()		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET)
+#define	LED_ON0()		  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_SET)
+#define	LED_ON1()		  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_SET)
+#define	LED_OFF0()		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET)
+#define	LED_OFF1()		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET)
 
-#define	SW_Read()	HAL_GPIO_ReadPin(PushSW_GPIO_Port, PushSW_Pin)
+#define	SW_Read()	    HAL_GPIO_ReadPin(PushSW_GPIO_Port, PushSW_Pin)
 
-#ifndef ArrayLength			// for cobs
+//### for cobs
+#ifndef ArrayLength
 #define ArrayLength(X)    (sizeof(X)/sizeof((X)[0]))
 #endif
 
-uint8_t	SW0 = 0;
-
-uint8_t	RxData = 0;
-
-uint16_t SCI_BYTES_READ = 0x0;
-uint8_t SCI_TX_DAT[TxBuff_Density] = {0x0};
+//### for USART1_EventHandler()
+//uint8_t SCI_TX_DAT[TxBuff_Density] = {0x0};
 uint8_t SCI_RX_DAT[RxBuff_Density] = {0x0};
 
 uint8_t USART1_RX_BUF[RxBuff_Density] = {0x0};
 #define DMA_WRITE_PTR ( (RxBuff_Density - huart1.hdmarx->Instance->CNDTR) % (RxBuff_Density) )
 
-uint8_t buffer[2];
+//### for LED_CTRL()
+uint8_t LED[2];   
 
+//### Reserved
+uint8_t	SW0 = 0;
 
 /* USER CODE END PD */
 
@@ -310,27 +312,12 @@ uint8_t check_sum(uint8_t *buf, uint16_t len)
     return (uint8_t)sum;
 }
 
-//----------------------------------------------------------------
-// cyclic timer interrupt
-//----------------------------------------------------------------
-void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
-{
-
-  if((htim->Instance == TIM3) && (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1))
-  {
-    // Timeout_Function
-    SW0 = SW_Read();
-
-  }
-}
-
 //---------------------------------------------------------------------------------------------------
 // Dump any length
 //---------------------------------------------------------------------------------------------------
 void print_hex(const uint8_t * src_ptr, size_t src_len)
 {
     size_t              i;
-
 
     for (i = 0; i < src_len; i++)
     {
@@ -388,16 +375,84 @@ void UART_Tx_w_encode(const uint8_t * src_ptr, size_t src_len, uint8_t SRC_ADDR,
     xprintf("\nLength %u, Status %02X\n", result.out_len + 1, result.status);
 #endif
 
-    memset(SCI_TX_DAT, 0xFF, sizeof(SCI_TX_DAT));   // TxBuff Clear
+    // memset(SCI_TX_DAT, 0xFF, sizeof(SCI_TX_DAT));   // TxBuff Clear
 
-    for(i=0; i<result.out_len + 1; i++)
-    {
-      SCI_TX_DAT[i] = out_buffer[i];
-    }
+    // for(i=0; i<result.out_len + 1; i++)
+    // {
+    //   SCI_TX_DAT[i] = out_buffer[i];
+    // }
 
 	UART_Tx_bin(out_buffer, result.out_len + 1);	// Send to UART
 }
 
+
+//---------------------------------------------------------------------------------------------------
+// Set ON-Persist time to LED
+//
+//LED_CTRL(LED_DOWNCOUNT,0,0);
+//LED_CTRL(LED_SETTIME,0,LED_PERSIST_TIME);
+//---------------------------------------------------------------------------------------------------
+void LED_CTRL( uint8_t control, uint8_t channel, uint8_t time)
+{
+    uint8_t i;
+
+    switch(control)
+    {
+      case LED_DOWNCOUNT:
+          for(i = 0; i < LED_MAX_CHANNEL; i++)
+          {
+              if(LED[i] == 0)   // off state
+              {
+                  if(i == 0)
+                  {
+                      LED_OFF0();
+                      break;
+                  } else if(i == 1)
+                  {
+                      LED_OFF1();
+                      break;
+                  }
+              } else
+              {
+                LED[i] = LED[i] -1;   // on state (count down)
+
+                if(i == 0)
+                {
+                    LED_ON0();
+                    break;
+                } else if(i == 1)
+                {
+                    LED_ON1();
+                    break;
+                }
+              }
+          }
+          break;
+
+      case LED_SETTIME:
+          LED[channel] = time;    // set to LED-on time
+          break;
+
+      default:
+          break;
+    }
+}
+
+//----------------------------------------------------------------
+// cyclic timer interrupt
+//----------------------------------------------------------------
+void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
+{
+
+  if((htim->Instance == TIM3) && (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1))
+  {
+    // Timeout_Function
+    SW0 = SW_Read();
+
+    LED_CTRL(LED_DOWNCOUNT,0,0);
+
+  }
+}
 //---------------------------------------------------------------------------------------------------
 
 /* USER CODE END 0 */
@@ -432,6 +487,7 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_USART1_UART_Init();
+  MX_I2C1_Init();
   MX_TIM3_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
@@ -503,7 +559,7 @@ int main(void)
 //	HAL_Delay(1);	// グローバルパケット
 	UART_Tx_w_encode(UART_Tx_Buf, 9, 0x02, 0x00, CMD_NOP);  // buf, buf_length(count from 1), Src_Addr, Dest_Addr, Command
 
-		LED_ON();
+//		LED_ON();
   }
   /* USER CODE END 3 */
 }
@@ -544,7 +600,7 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_I2C1;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK1;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {

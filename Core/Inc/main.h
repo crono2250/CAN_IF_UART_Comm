@@ -64,19 +64,32 @@ void print_hex(const uint8_t * src_ptr, size_t src_len);
 void UART_Tx_bin(const uint8_t * src_ptr, size_t src_len);
 void UART_Tx_w_encode(const uint8_t * src_ptr, size_t src_len, uint8_t SRC_ADDR, uint8_t DEST_ADDR, uint8_t COMMAND);
 
+void LED_CTRL( uint8_t control, uint8_t channel, uint8_t time);
+
 HAL_StatusTypeDef HAL_UART_DMA_Tx_Stop(UART_HandleTypeDef *huart);
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart);
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define PushSW_Pin GPIO_PIN_4
+#define MCO_Pin GPIO_PIN_0
+#define MCO_GPIO_Port GPIOF
+#define SWDIO_Pin GPIO_PIN_13
+#define SWDIO_GPIO_Port GPIOA
+#define SWCLK_Pin GPIO_PIN_14
+#define SWCLK_GPIO_Port GPIOA
+#define PushSW_Pin GPIO_PIN_5
 #define PushSW_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
 
 #define TxBuff_Density 257
 #define RxBuff_Density 257
 //#define str2dec_buf_size 1020
+
+#define LED_MAX_CHANNEL 2
+#define LED_PERSIST_TIME  5
+#define LED_DOWNCOUNT 0
+#define LED_SETTIME 1
 
 #define OWN_ADDRESS 1
 #define TxHeader_Length 4

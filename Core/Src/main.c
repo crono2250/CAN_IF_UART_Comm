@@ -240,6 +240,7 @@ void UART_Rx_Parse(uint8_t *buf, uint16_t len)
 		PAYLOAD[i] = buf[TxHeader_Length + i];
 	}
 
+	LED_CTRL(LED_SETTIME,1,LED_PERSIST_TIME);	// Rx LED
 #ifdef _DEBUGPRINT_RX_PARSE
 	xprintf("COMMAND = %02X\n", COMMAND);
 #endif
@@ -270,6 +271,7 @@ void UART_Rx_Parse(uint8_t *buf, uint16_t len)
 void UART_Transmit(uint8_t chara)
 {
 //	HAL_UART_Transmit_DMA(&huart1, (uint8_t*)&chara, 1);
+	LED_CTRL(LED_SETTIME,0,LED_PERSIST_TIME);	// Tx LED
 	HAL_UART_Transmit(&huart1, (uint8_t*)&chara, 1, 100);
 	return;
 }
@@ -401,29 +403,32 @@ void LED_CTRL( uint8_t control, uint8_t channel, uint8_t time)
       case LED_DOWNCOUNT:
           for(i = 0; i < LED_MAX_CHANNEL; i++)
           {
+//        	  xprintf("LED_Channel = %d\n",i);
               if(LED[i] == 0)   // off state
               {
                   if(i == 0)
                   {
                       LED_OFF0();
-                      break;
+//                      break;
                   } else if(i == 1)
                   {
                       LED_OFF1();
-                      break;
+//                      break;
                   }
               } else
               {
                 LED[i] = LED[i] -1;   // on state (count down)
 
+//                xprintf("LED%d = %d\n",i,LED[i]);
+
                 if(i == 0)
                 {
                     LED_ON0();
-                    break;
+//                    break;
                 } else if(i == 1)
                 {
                     LED_ON1();
-                    break;
+//                    break;
                 }
               }
           }
@@ -439,7 +444,13 @@ void LED_CTRL( uint8_t control, uint8_t channel, uint8_t time)
 }
 
 //----------------------------------------------------------------
-// cyclic timer interrupt
+// cyclic timer interrupt (10mSec)
+//
+//	htim3.Init.Prescaler = 3200-1;
+//	htim3.Init.Period = 200;
+//	APB2 = 64MHz
+//	1 / (64M / (3200 x 200)) = 10e-3[Sec]
+//
 //----------------------------------------------------------------
 void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 {
@@ -523,8 +534,9 @@ int main(void)
 	UART_Tx_Buf[6] = rand() % 0xFF + 1;
 	UART_Tx_Buf[7] = rand() % 0xFF + 1;
 
-//    HAL_Delay(1);	// 自分自身からのパケット
+    HAL_Delay(500);	// 自分自身からのパケット
 	UART_Tx_w_encode(UART_Tx_Buf, 9, OWN_ADDRESS, 0x10, CMD_NOP);  // buf, buf_length(count from 1), Src_Addr, Dest_Addr, Command
+//	LED_CTRL(LED_SETTIME,0,LED_PERSIST_TIME);	// Tx LED
 
 	UART_Tx_Buf[0] = rand() % 0xFF + 1;
 	UART_Tx_Buf[1] = rand() % 0xFF + 1;
@@ -534,7 +546,7 @@ int main(void)
 	UART_Tx_Buf[5] = rand() % 0xFF + 1;
 	UART_Tx_Buf[6] = rand() % 0xFF + 1;
 	UART_Tx_Buf[7] = rand() % 0xFF + 1;
-//	HAL_Delay(1);	// 他局からのパケット(他局宛)
+	HAL_Delay(500);	// 他局からのパケット(他局宛)
 	UART_Tx_w_encode(UART_Tx_Buf, 9, 0x02, 0x10, CMD_NOP);  // buf, buf_length(count from 1), Src_Addr, Dest_Addr, Command
 
 	UART_Tx_Buf[0] = rand() % 0xFF + 1;
@@ -545,8 +557,9 @@ int main(void)
 	UART_Tx_Buf[5] = rand() % 0xFF + 1;
 	UART_Tx_Buf[6] = rand() % 0xFF + 1;
 	UART_Tx_Buf[7] = rand() % 0xFF + 1;
-//	HAL_Delay(1);	// 他局からのパケット(自局宛)
+	HAL_Delay(500);	// 他局からのパケット(自局宛)
 	UART_Tx_w_encode(UART_Tx_Buf, 9, 0x02, OWN_ADDRESS, CMD_NOP);  // buf, buf_length(count from 1), Src_Addr, Dest_Addr, Command
+//	LED_CTRL(LED_SETTIME,1,LED_PERSIST_TIME);	// Rx LED
 
 	UART_Tx_Buf[0] = rand() % 0xFF + 1;
 	UART_Tx_Buf[1] = rand() % 0xFF + 1;
@@ -556,7 +569,7 @@ int main(void)
 	UART_Tx_Buf[5] = rand() % 0xFF + 1;
 	UART_Tx_Buf[6] = rand() % 0xFF + 1;
 	UART_Tx_Buf[7] = rand() % 0xFF + 1;
-//	HAL_Delay(1);	// グローバルパケット
+	HAL_Delay(500);	// グローバルパケット
 	UART_Tx_w_encode(UART_Tx_Buf, 9, 0x02, 0x00, CMD_NOP);  // buf, buf_length(count from 1), Src_Addr, Dest_Addr, Command
 
 //		LED_ON();
